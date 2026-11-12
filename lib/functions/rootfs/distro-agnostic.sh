@@ -12,15 +12,15 @@ function bootscript_export_display_console() {
 	typeset ITEM
 	typeset CONSOLEARGS
 
-	for ITEM in ${DISPLAYCON//,/ } ; do
+	for ITEM in ${DISPLAYCON//,/ }; do
 		CONSOLEARGS="${CONSOLEARGS:-}${CONSOLEARGS:+ }console=${ITEM//:/,}"
 	done
 
-	for ITEM in $SRC_CMDLINE ; do
-		if [[ ! 'console' == "${ITEM%%=*}" ]] ; then
+	for ITEM in $SRC_CMDLINE; do
+		if [[ ! 'console' == "${ITEM%%=*}" ]]; then
 			continue
 		fi
-		if [[ "${ITEM#*=}" =~ 'tty'[AGSU]* ]] ; then
+		if [[ "${ITEM#*=}" =~ 'tty'[AGSU]* ]]; then
 			continue
 		fi
 		CONSOLEARGS="${CONSOLEARGS:-}${CONSOLEARGS:+ }${ITEM:?}"
@@ -35,15 +35,15 @@ function bootscript_export_serial_console() {
 	typeset ITEM
 	typeset CONSOLEARGS
 
-	for ITEM in ${SERIALCON//,/ } ; do
+	for ITEM in ${SERIALCON//,/ }; do
 		CONSOLEARGS="${CONSOLEARGS:-}${CONSOLEARGS:+ }console=${ITEM//:/,}"
 	done
 
-	for ITEM in $SRC_CMDLINE ; do
-		if [[ ! 'console' == "${ITEM%%=*}" ]] ; then
+	for ITEM in $SRC_CMDLINE; do
+		if [[ ! 'console' == "${ITEM%%=*}" ]]; then
 			continue
 		fi
-		if [[ ! "${ITEM#*=}" =~ 'tty'[AGSU]* ]] ; then
+		if [[ ! "${ITEM#*=}" =~ 'tty'[AGSU]* ]]; then
 			continue
 		fi
 		CONSOLEARGS="${CONSOLEARGS:-}${CONSOLEARGS:+ }${ITEM:?}"
@@ -67,7 +67,7 @@ function render_bootscript_template() { (
 
 	export $(set | sed -En '/^BOOTSCRIPT_TEMPLATE__/s/=.*$//p')
 	envsubst "'${SHELL_FORMAT}'"
-) }
+); }
 
 function proof_rendered_bootscript_template() {
 	! egrep '\$\{?BOOTSCRIPT_TEMPLATE__' "${1:?}"
@@ -102,13 +102,42 @@ function install_distribution_agnostic() {
 		tr ' ' '\n' <<< "${MODULES_BLACKLIST}" | sed -e 's/^/blacklist /' > "${SDCARD}/etc/modprobe.d/blacklist-${BOARD}.conf"
 	fi
 
-	# configure MIN / MAX speed for cpufrequtils
+	# CPU frequency defaults: armbian-hardware-optimization applies them, armbian-config edits them
+	[[ -z "${CPUMIN}" || "${CPUMIN}" =~ ^[0-9]+$ ]] || exit_with_error "Invalid CPUMIN" "${CPUMIN}"
+	[[ -z "${CPUMAX}" || "${CPUMAX}" =~ ^[0-9]+$ ]] || exit_with_error "Invalid CPUMAX" "${CPUMAX}"
+	[[ -z "${GOVERNOR}" || "${GOVERNOR}" =~ ^[a-z0-9_]+$ ]] || exit_with_error "Invalid GOVERNOR" "${GOVERNOR}"
+	[[ "${CPUBOOST:-false}" =~ ^(true|off|false)$ ]] || exit_with_error "Invalid CPUBOOST" "${CPUBOOST}"
 	cat <<- EOF > "${SDCARD}"/etc/default/cpufrequtils
-		ENABLE=${CPUFREQUTILS_ENABLE:-false}
 		MIN_SPEED=$CPUMIN
 		MAX_SPEED=$CPUMAX
 		GOVERNOR=$GOVERNOR
+		BOOST=${CPUBOOST:-false}
 	EOF
+	# Per-cluster values (big.LITTLE): CPUMIN_POLICY<n>, CPUMAX_POLICY<n>, GOVERNOR_POLICY<n>,
+	# where <n> is the first CPU of the cluster (/sys/devices/system/cpu/cpufreq/policy<n>).
+	declare cpufreq_var cpufreq_key
+	for cpufreq_var in $(compgen -v | grep -E '^(CPUMIN|CPUMAX|GOVERNOR)_POLICY[0-9]+$' | sort -V); do
+		case "${cpufreq_var%_POLICY*}" in
+			CPUMIN) cpufreq_key=MIN_SPEED ;;
+			CPUMAX) cpufreq_key=MAX_SPEED ;;
+			GOVERNOR) cpufreq_key=GOVERNOR ;;
+		esac
+		# Frequencies are integers in kHz. Governor names are words.
+		if [[ "${cpufreq_key}" == GOVERNOR ]]; then
+			[[ "${!cpufreq_var}" =~ ^[a-z0-9_]+$ ]] || exit_with_error "Invalid ${cpufreq_var}" "${!cpufreq_var}"
+		else
+			[[ "${!cpufreq_var}" =~ ^[0-9]+$ ]] || exit_with_error "Invalid ${cpufreq_var}" "${!cpufreq_var}"
+		fi
+		echo "POLICY${cpufreq_var##*_POLICY}_${cpufreq_key}=${!cpufreq_var}" >> "${SDCARD}"/etc/default/cpufrequtils
+	done
+
+	# armbian-config applies this tuning profile on first boot (armbian-firstrun).
+	declare tuning_profile="${TUNING_PROFILE:-$([[ "${BUILD_DESKTOP}" == yes ]] && echo desktop || echo sbc)}"
+	case "${tuning_profile}" in
+		sbc | balanced | desktop | builder | nas) echo "PENDING=${tuning_profile}" > "${SDCARD}"/etc/default/armbian-tuning-profile ;;
+		none) ;;
+		*) exit_with_error "Invalid TUNING_PROFILE" "${tuning_profile}" ;;
+	esac
 
 	# disable selinux by default
 	mkdir -p "${SDCARD}"/selinux
@@ -218,7 +247,8 @@ function install_distribution_agnostic() {
 		if [[ -n $DEFAULT_OVERLAYS ]]; then
 			DEFAULT_OVERLAYS_ARR=(${DEFAULT_OVERLAYS//,/ })
 			DEFAULT_OVERLAYS_ARR=("${DEFAULT_OVERLAYS_ARR[@]/%/".dtbo"}")
-			DEFAULT_OVERLAYS_ARR=("${DEFAULT_OVERLAYS_ARR[@]/#/"${bootpart_prefix}dtb/${BOOT_FDT_FILE%%/*}/overlay/${OVERLAY_PREFIX}-"}")
+			# extlinux needs one path per overlay: use the first prefix of the OVERLAY_PREFIX list.
+			DEFAULT_OVERLAYS_ARR=("${DEFAULT_OVERLAYS_ARR[@]/#/"${bootpart_prefix}dtb/${BOOT_FDT_FILE%%/*}/overlay/${OVERLAY_PREFIX%% *}-"}")
 
 			display_alert "Adding to extlinux.conf" "fdtoverlays=${DEFAULT_OVERLAYS_ARR[*]}" "debug"
 			echo "  fdtoverlays ${DEFAULT_OVERLAYS_ARR[*]}" >> "$SDCARD/boot/extlinux/extlinux.conf"
@@ -228,18 +258,18 @@ function install_distribution_agnostic() {
 
 		if [[ -n "${BOOTSCRIPT}" ]]; then # @TODO: && "${BOOTCONFIG}" != "none"
 			case "${bootscript_src}" in
-			*'.template')
-				display_alert "Rendering boot script template" "${bootscript_src_path}/${bootscript_src}" "info"
-				run_host_command_logged cat "${bootscript_src_path}/${bootscript_src}" | render_bootscript_template > "${SDCARD}/boot/${bootscript_dst}"
+				*'.template')
+					display_alert "Rendering boot script template" "${bootscript_src_path}/${bootscript_src}" "info"
+					run_host_command_logged cat "${bootscript_src_path}/${bootscript_src}" | render_bootscript_template > "${SDCARD}/boot/${bootscript_dst}"
 
-				if ! proof_rendered_bootscript_template "${SDCARD}/boot/${bootscript_dst}" ; then
-					exit_with_error "Render of bootscript template was not successful. Inspect '${SDCARD}/boot/${bootscript_dst}' for unrendered variables."
-				fi
-				;;
-			*)
-				display_alert "Deploying boot script" "${bootscript_src_path}/${bootscript_src}" "info"
-				run_host_command_logged cp -pv "${bootscript_src_path}/${bootscript_src}" "${SDCARD}/boot/${bootscript_dst}"
-				;;
+					if ! proof_rendered_bootscript_template "${SDCARD}/boot/${bootscript_dst}"; then
+						exit_with_error "Render of bootscript template was not successful. Inspect '${SDCARD}/boot/${bootscript_dst}' for unrendered variables."
+					fi
+					;;
+				*)
+					display_alert "Deploying boot script" "${bootscript_src_path}/${bootscript_src}" "info"
+					run_host_command_logged cp -pv "${bootscript_src_path}/${bootscript_src}" "${SDCARD}/boot/${bootscript_dst}"
+					;;
 			esac
 		fi
 
@@ -275,6 +305,11 @@ function install_distribution_agnostic() {
 		if [[ -n $BOOT_FDT_FILE && -f "${SDCARD}"/boot/armbianEnv.txt ]]; then
 			display_alert "Adding to armbianEnv.txt" "fdtfile=${BOOT_FDT_FILE}" "debug"
 			run_host_command_logged echo "fdtfile=${BOOT_FDT_FILE}" ">>" "${SDCARD}/boot/armbianEnv.txt"
+		fi
+
+		if [[ -n $BOOT_FDT_FILE_FALLBACK && -f "${SDCARD}"/boot/armbianEnv.txt ]]; then
+			display_alert "Adding to armbianEnv.txt" "fdtfile_fallback=${BOOT_FDT_FILE_FALLBACK}" "debug"
+			run_host_command_logged echo "fdtfile_fallback=${BOOT_FDT_FILE_FALLBACK}" ">>" "${SDCARD}/boot/armbianEnv.txt"
 		fi
 
 	fi
@@ -378,7 +413,6 @@ function install_distribution_agnostic() {
 
 		if [[ "${KERNEL_HAS_WORKING_HEADERS:-"no"}" == "yes" ]]; then
 			if [[ $INSTALL_HEADERS == yes ]]; then # @TODO remove? might be a good idea to always install headers.
-				chroot_sdcard_apt_get_install "pahole"
 				install_artifact_deb_chroot "linux-headers"
 			fi
 		fi
@@ -406,14 +440,6 @@ function install_distribution_agnostic() {
 	# install board support packages
 	install_artifact_deb_chroot "armbian-bsp-cli"
 
-	# install armbian-desktop
-	if [[ $BUILD_DESKTOP == yes ]]; then
-		install_artifact_deb_chroot "armbian-desktop"
-		install_artifact_deb_chroot "armbian-bsp-desktop"
-		# install display manager and PACKAGE_LIST_DESKTOP_FULL packages if enabled per board
-		desktop_postinstall
-	fi
-
 	# install armbian-zsh
 	if [[ "${PACKAGE_LIST_RM}" != *armbian-zsh* ]]; then
 		if [[ $BUILD_MINIMAL != yes ]]; then
@@ -425,7 +451,7 @@ function install_distribution_agnostic() {
 	if [[ $PLYMOUTH == yes ]]; then
 		install_artifact_deb_chroot "armbian-plymouth-theme"
 	else
-		chroot_sdcard_apt_get_remove --auto-remove plymouth
+		chroot_sdcard_apt_get_remove --auto-remove plymouth 2> /dev/null || true
 	fi
 
 	# freeze armbian packages
@@ -496,7 +522,8 @@ function install_distribution_agnostic() {
 	disable_systemd_service_sdcard nmbd
 
 	# disable low-level kernel messages for non betas
-	if [[ -z $BETA ]]; then
+	# trixie and newer do not ship /etc/sysctl.conf
+	if [[ -z $BETA && -f "${SDCARD}"/etc/sysctl.conf ]]; then
 		sed -i "s/^#kernel.printk*/kernel.printk/" "${SDCARD}"/etc/sysctl.conf
 	fi
 
@@ -514,7 +541,8 @@ function install_distribution_agnostic() {
 	# example: SERIALCON="ttyS0:15000000,ttyGS1"
 	#
 	ifs=$IFS
-	for i in $(echo "${SERIALCON:-'ttyS0'}" | sed "s/,/ /g"); do
+	local _serialcon_csv="${SERIALCON:-ttyS0}"
+	for i in ${_serialcon_csv//,/ }; do
 		IFS=':' read -r -a array <<< "$i"
 		[[ "${array[0]}" == "tty1" ]] && continue # Don't enable tty1 as serial console.
 		display_alert "Enabling serial console" "${array[0]}" "info"
@@ -557,15 +585,15 @@ function install_distribution_agnostic() {
 	cp "${SDCARD}"/etc/armbian-release "${SDCARD}"/etc/armbian-image-release
 
 	# save list of enabled extensions for this image
-	EXTENSIONS=${ENABLE_EXTENSIONS} >> "${SDCARD}"/etc/armbian-image-release
+	echo "EXTENSIONS='${ENABLE_EXTENSIONS}'" >> "${SDCARD}"/etc/armbian-image-release
 
 	# store vendor pretty name to image only. We don't need to save this in BSP upgrade
 	# files. Vendor should be only defined at build image stage.
 	[[ -z $VENDORPRETTYNAME ]] && VENDORPRETTYNAME="${VENDOR}"
-	VENDORPRETTYNAME="$VENDORPRETTYNAME" >> "${SDCARD}"/etc/armbian-image-release
+	echo "VENDORPRETTYNAME='$VENDORPRETTYNAME'" >> "${SDCARD}"/etc/armbian-image-release
 
 	# DNS fix. package resolvconf is not available everywhere
-	if [ -d "${SDCARD}"/etc/resolvconf/resolv.conf.d ] && [ -n "$NAMESERVER" ]; then
+	if [[ -d "${SDCARD}/etc/resolvconf/resolv.conf.d" && -n "$NAMESERVER" ]]; then
 		echo "nameserver $NAMESERVER" > "${SDCARD}"/etc/resolvconf/resolv.conf.d/head
 	fi
 

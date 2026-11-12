@@ -2,6 +2,7 @@
 declare -g BOARD_NAME="Indiedroid Nova"
 declare -g BOARD_VENDOR="rockchip"
 declare -g BOARD_MAINTAINER="lanefu"
+declare -g INTRODUCED="2022"
 declare -g BOARDFAMILY="rockchip-rk3588"
 declare -g BOOTCONFIG="indiedroid_defconfig" # vendor name, not standard, see hook below, set BOOT_SOC below to compensate
 declare -g BOOT_SOC="rk3588"
@@ -30,7 +31,8 @@ function post_family_config__indiedroid-nova_use_stvhay_uboot() {
 }
 
 # BSP kernel uses device name from contract manufacturer rather than production name in mainline
-function post_family_config_branch_vendor__use_9tripod_dtb() {
+function post_family_config__use_9tripod_dtb() {
+	[[ "${BRANCH}" == vendor* ]] || return 0
 	declare -g BOOT_FDT_FILE="rockchip/rk3588s-9tripod-linux.dtb"
 }
 

@@ -3,6 +3,7 @@ BOARD_NAME="NanoPi R3S"
 BOARD_VENDOR="friendlyelec"
 BOARDFAMILY="rk35xx"
 BOARD_MAINTAINER=""
+INTRODUCED="2024"
 HAS_VIDEO_OUTPUT="no"
 BOOTCONFIG="nanopi-r3s-rk3566_defconfig"
 KERNEL_TARGET="current,edge"
@@ -13,8 +14,8 @@ BOOT_SCENARIO="spl-blobs"
 enable_extension "uboot-btrfs"
 
 function post_family_config__use_mainline_uboot() {
-	if [[ "$BRANCH" == "vendor" ]]; then
-    	return 0
+	if [[ "$BRANCH" == vendor* ]]; then
+		return 0
 	fi
 
 	unset BOOT_FDT_FILE # boot.scr will use whatever u-boot detects and sets 'fdtfile' to

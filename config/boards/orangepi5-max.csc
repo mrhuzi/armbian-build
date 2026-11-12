@@ -3,8 +3,8 @@ BOARD_NAME="Orange Pi 5 Max"
 BOARD_VENDOR="xunlong"
 BOARDFAMILY="rockchip-rk3588"
 BOARD_MAINTAINER=""
-BOOTCONFIG="orangepi-5-max-rk3588_defconfig" # vendor name, not standard, see hook below, set BOOT_SOC below to compensate
-BOOT_SOC="rk3588"
+INTRODUCED="2024"
+BOOTCONFIG="orangepi-5-max-rk3588_defconfig"
 KERNEL_TARGET="vendor,current,edge"
 KERNEL_TEST_TARGET="vendor,edge"
 FULL_DESKTOP="yes"
@@ -51,22 +51,40 @@ function post_family_tweaks__orangepi5max_naming_audios() {
 	return 0
 }
 
+function post_family_config__orangepi5max_bluetooth_packages() {
+	[[ "$BRANCH" != vendor* ]] && return 0
+	add_packages_to_image rfkill bluez
+	return 0
+}
+
 function post_family_tweaks_bsp__orangepi5max_bluetooth() {
+	[[ "$BRANCH" != vendor* ]] && return 0
 	display_alert "$BOARD" "Installing ap6611s-bluetooth.service" "info"
 
-	# Bluetooth on this board is handled by a Broadcom (AP6611S) chip and requires
-	# a custom brcm_patchram_plus binary, plus a systemd service to run it at boot time
+	# Vendor kernels require the user-space patchram loader.
 	install -m 755 $SRC/packages/bsp/rk3399/brcm_patchram_plus_rk3399 $destination/usr/bin
 	cp $SRC/packages/bsp/rk3399/rk3399-bluetooth.service $destination/lib/systemd/system/ap6611s-bluetooth.service
 
-	# Reuse the service file, ttyS0 -> ttyS7; BCM4345C5.hcd -> SYN43711A0.hcd
+	# Adapt the shared service to the AP6611S on UART7.
 	sed -i 's/ttyS0/ttyS7/g' $destination/lib/systemd/system/ap6611s-bluetooth.service
 	sed -i 's/BCM4345C5.hcd/SYN43711A0.hcd/g' $destination/lib/systemd/system/ap6611s-bluetooth.service
 	return 0
 }
 
 function post_family_tweaks__orangepi5max_enable_bluetooth_service() {
+	# Mainline kernels use the hci_bcm SerDev driver.
+	[[ "$BRANCH" != vendor* ]] && return 0
+
 	display_alert "$BOARD" "Enabling ap6611s-bluetooth.service" "info"
 	chroot_sdcard systemctl enable ap6611s-bluetooth.service
+	return 0
+}
+
+# hci_bcm derives the firmware name from the board compatible string.
+function post_family_tweaks_bsp__orangepi5max_bt_firmware_symlink() {
+	[[ "$BRANCH" == vendor* ]] && return 0
+	display_alert "$BOARD" "Creating BT firmware symlink for hci_bcm" "info"
+	mkdir -p "$destination/lib/firmware/brcm"
+	ln -sf SYN43711A0.hcd "$destination/lib/firmware/brcm/BCM.xunlong,orangepi-5-max.hcd"
 	return 0
 }

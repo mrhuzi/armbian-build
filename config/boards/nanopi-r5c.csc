@@ -3,7 +3,7 @@ BOARD_NAME="NanoPi R5C"
 BOARD_VENDOR="friendlyelec"
 BOARDFAMILY="rockchip64"
 BOARD_MAINTAINER=""
-BOOT_SOC="rk3568"
+INTRODUCED="2022"
 KERNEL_TARGET="current,edge"
 KERNEL_TEST_TARGET="current"
 BOOT_FDT_FILE="rockchip/rk3568-nanopi-r5c.dtb"
@@ -20,7 +20,6 @@ BOOTBRANCH_BOARD="tag:v2026.01"
 BOOTPATCHDIR="v2026.01"
 BOOTCONFIG="nanopi-r5c-rk3568_defconfig"
 
-OVERLAY_PREFIX="rockchip-rk3568"
 DEFAULT_OVERLAYS="nanopi-r5c-leds"
 
 function post_family_config__uboot_config() {

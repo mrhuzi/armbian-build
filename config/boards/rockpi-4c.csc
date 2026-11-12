@@ -3,14 +3,15 @@ BOARD_NAME="Rockpi 4C"
 BOARD_VENDOR="radxa"
 BOARDFAMILY="rockchip64"
 BOARD_MAINTAINER=""
+INTRODUCED="2019"
 BOOTCONFIG="rock-pi-4c-rk3399_defconfig"
 KERNEL_TARGET="current,edge"
 KERNEL_TEST_TARGET="current"
 FULL_DESKTOP="yes"
 BOOT_LOGO="desktop"
 BOOT_FDT_FILE="rockchip/rk3399-rock-pi-4c.dtb"
-BOOT_SCENARIO="tpl-spl-blob"
 BOOT_SUPPORT_SPI=yes
+source "${SRC}/config/sources/vendors/radxa/rk3399-uboot.conf.sh"
 
 function post_family_tweaks_bsp__rockpi-4c_BSP() {
 	display_alert "Installing BSP firmware and fixups"

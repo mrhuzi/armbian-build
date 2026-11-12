@@ -18,10 +18,7 @@ log: logging.Logger = logging.getLogger("aggregation_utils")
 AGGREGATION_SEARCH_ROOT_ABSOLUTE_DIRS = []
 DEBOOTSTRAP_SEARCH_RELATIVE_DIRS = []
 CLI_SEARCH_RELATIVE_DIRS = []
-DESKTOP_ENVIRONMENTS_SEARCH_RELATIVE_DIRS = []
-DESKTOP_APPGROUPS_SEARCH_RELATIVE_DIRS = []
 SELECTED_CONFIGURATION = None
-DESKTOP_APPGROUPS_SELECTED = []
 SRC = None
 
 # Hack: this shouldn't be a global.
@@ -43,10 +40,16 @@ def calculate_potential_paths(root_dirs, relative_dirs, sub_dirs, artifact_file,
 	return potential_paths
 
 
+def remove_common_path(common_path, path):
+	# Only what is under the common path (SRC) can be made relative to it. USERPATCHES_PATH, one of the search roots,
+	# can be anywhere; paths under it stay absolute, and os.path.join(common_path, path) leaves those alone.
+	return path[len(common_path):] if path.startswith(common_path) else path
+
+
 def process_common_path_for_potentials(potential_paths):
 	# find the common prefix across potential_paths, and remove it from all paths.
 	potential_paths["common_path"] = SRC + "/"  # os.path.commonprefix(potential_paths["paths"])
-	potential_paths["paths"] = [path[len(potential_paths["common_path"]):] for path in potential_paths["paths"]]
+	potential_paths["paths"] = [remove_common_path(potential_paths["common_path"], path) for path in potential_paths["paths"]]
 	return potential_paths
 
 
@@ -61,13 +64,13 @@ def aggregate_packages_from_potential(potential_paths):
 		# Add to global, for listing all potential paths for packages:
 		ALL_POTENTIAL_PATHS_PACKAGES.append(path)
 
-		full_path = potential_paths["common_path"] + path
+		full_path = os.path.join(potential_paths["common_path"], path)
 		if not os.path.isfile(full_path):
 			# print(f"Skipping {path}, not a file")
 			continue
 
 		# Resolve the real path of the file, eliminating symlinks; remove the common prefix again.
-		resolved_path = os.path.realpath(full_path)[len(potential_paths["common_path"]):]
+		resolved_path = remove_common_path(potential_paths["common_path"], os.path.realpath(full_path))
 		# the path in the debugging information is either just the path, or the symlink indication.
 		symlink_to = None if resolved_path == path else resolved_path
 		# print(f"Reading {path}")
@@ -88,12 +91,12 @@ def aggregate_packages_from_potential(potential_paths):
 def aggregate_simple_contents_potential(potential_paths):
 	aggregation_results = {}  # {"potential_paths": potential_paths}
 	for path in potential_paths["paths"]:
-		full_path = potential_paths["common_path"] + path
+		full_path = os.path.join(potential_paths["common_path"], path)
 		if not os.path.isfile(full_path):
 			continue
 
 		# Resolve the real path of the file, eliminating symlinks; remove the common prefix again.
-		resolved_path = os.path.realpath(full_path)[len(potential_paths["common_path"]):]
+		resolved_path = remove_common_path(potential_paths["common_path"], os.path.realpath(full_path))
 		# the path in the debugging information is either just the path, or the symlink indication.
 		symlink_to = None if resolved_path == path else resolved_path
 
@@ -116,11 +119,11 @@ def find_files_in_directory(directory, glob_pattern):
 def aggregate_apt_sources(potential_paths):
 	aggregation_results = {}  # {"potential_paths": potential_paths}
 	for path in potential_paths["paths"]:
-		full_path = potential_paths["common_path"] + path
+		full_path = os.path.join(potential_paths["common_path"], path)
 		if not os.path.isdir(full_path):
 			continue
 		# Resolve the real path of the file, eliminating symlinks; remove the common prefix again.
-		resolved_path = os.path.realpath(full_path)[len(potential_paths["common_path"]):]
+		resolved_path = remove_common_path(potential_paths["common_path"], os.path.realpath(full_path))
 		# the path in the debugging information is either just the path, or the symlink indication.
 		symlink_to = None if resolved_path == path else resolved_path
 
@@ -219,13 +222,7 @@ def aggregate_all_cli(artifact, aggregation_function=aggregate_packages_from_pot
 	return aggregation_function(process_common_path_for_potentials(potential_paths))
 
 
-def aggregate_all_desktop(artifact, aggregation_function=aggregate_packages_from_potential):
-	potential_paths = calculate_potential_paths(
-		AGGREGATION_SEARCH_ROOT_ABSOLUTE_DIRS, DESKTOP_ENVIRONMENTS_SEARCH_RELATIVE_DIRS, ["."], artifact)
-	potential_paths = calculate_potential_paths(
-		AGGREGATION_SEARCH_ROOT_ABSOLUTE_DIRS, DESKTOP_APPGROUPS_SEARCH_RELATIVE_DIRS,
-		DESKTOP_APPGROUPS_SELECTED, artifact, potential_paths)
-	return aggregation_function(process_common_path_for_potentials(potential_paths))
+# aggregate_all_desktop() removed — desktop packages owned by armbian-config now.
 
 
 def join_refs_for_bash_single_string(refs):

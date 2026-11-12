@@ -3,7 +3,8 @@ BOARD_NAME="Banana Pi R4"
 BOARD_VENDOR="sinovoip"
 BOARDFAMILY="filogic"
 BOARD_MAINTAINER=""
-KERNEL_TARGET="current"
+INTRODUCED="2024"
+KERNEL_TARGET="current,edge"
 KERNEL_TEST_TARGET="current"
 BOOTCONFIG="mt7988a_bananapi_bpi-r4-sdmmc_defconfig"
 BOOT_FDT_FILE="mediatek/mt7988a-bananapi-bpi-r4-sd.dtb"
@@ -13,7 +14,7 @@ HAS_VIDEO_OUTPUT="no"
 
 function post_family_tweaks__bpi-r4() {
 	display_alert "Applying eth blobs"
-	
+
 	mkdir -p "$SDCARD/lib/firmware/mediatek/mt7988"
 	cp -v "$SRC/packages/blobs/filogic/firmware/mediatek/mt7988/mt7988_wo_0.bin" "$SDCARD/lib/firmware/mediatek/mt7988/mt7988_wo_0.bin"
 	cp -v "$SRC/packages/blobs/filogic/firmware/mediatek/mt7988/mt7988_wo_1.bin" "$SDCARD/lib/firmware/mediatek/mt7988/mt7988_wo_1.bin"
